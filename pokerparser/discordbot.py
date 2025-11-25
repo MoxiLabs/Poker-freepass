@@ -8,7 +8,10 @@ import sys
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 from itertools import cycle
-from .parser import FreerollParser
+from typing import List, cast, Union
+from .freerollpass import FreerollParser
+from .freeroll_password import FreeRollPasswordParser
+from .models import TournamentEvent
 
 # ------------------------------------------------------
 # CONFIG LOADING
@@ -64,167 +67,47 @@ URL_PASS = "https://freerollpass.com/"
 # ------------------------------------------------------
 # SCRAPER – freeroll-password.com
 # ------------------------------------------------------
-def fetch_freerolls_password():
+def fetch_freerolls_password() -> List[TournamentEvent]:
     """Fetch freerolls from freeroll-password.com"""
     try:
-        r = requests.get(URL_PASSWORD, timeout=10)
+        parser = FreeRollPasswordParser(url=URL_PASSWORD)
+        tournaments = parser.get_tournaments()
+        return tournaments if tournaments else []
     except:
         return []
-
-    soup = BeautifulSoup(r.text, "html.parser")
-    wrapper = soup.select_one("div.pt-cv-wrapper")
-    
-    if not wrapper:
-        return []
-
-    events = []
-    items = wrapper.select(".pt-cv-content-item")
-
-    for item in items:
-        try:
-            excerpt = item.select_one(".fpexcerpt")
-            if not excerpt:
-                continue
-
-            # Parse room
-            room_span = excerpt.select_one(".exroom")
-            room = "Unknown"
-            if room_span and room_span.next_sibling:
-                room = str(room_span.next_sibling).strip()
-
-            # Parse date
-            date_span = excerpt.select_one(".date-display-single")
-            date_str = date_span.text.strip() if date_span else None
-
-            # Parse time with timezone
-            time_span = excerpt.select_one(".extime")
-            time_str = None
-            if time_span and time_span.next_sibling:
-                time_str = str(time_span.next_sibling).strip()
-
-            # Parse prize
-            prize_span = excerpt.select_one(".exprize")
-            prize = "n/a"
-            if prize_span and prize_span.next_sibling:
-                prize = str(prize_span.next_sibling).strip()
-
-            # Parse name
-            name_span = excerpt.select_one(".exname")
-            name = "Unknown"
-            if name_span and name_span.next_sibling:
-                name = str(name_span.next_sibling).strip()
-
-            # Parse password
-            password_span = excerpt.select_one(".expass2")
-            password = password_span.text.strip() if password_span else "n/a"
-
-            # Parse datetime with timezone conversion
-            if date_str and time_str:
-                # Format: "November 24, 2025" and "22:30 GMT+2"
-                # Extract timezone offset from time string
-                tz_match = re.search(r'GMT([+-]\d+)', time_str)
-                tz_offset = int(tz_match.group(1)) if tz_match else 0
-                
-                time_clean = time_str.split()[0]  # Get just HH:MM
-                dt_str = f"{date_str} {time_clean}"
-                dt_naive = datetime.strptime(dt_str, "%B %d, %Y %H:%M")
-                
-                # Create timezone-aware datetime
-                source_tz = timezone(timedelta(hours=tz_offset))
-                dt_aware = dt_naive.replace(tzinfo=source_tz)
-                
-                # Convert to Budapest time (GMT+1)
-                budapest_tz = timezone(timedelta(hours=1))
-                dt_budapest = dt_aware.astimezone(budapest_tz)
-                
-                events.append({
-                    "datetime": dt_budapest.replace(tzinfo=None),  # Store as naive datetime in Budapest time
-                    "room": room,
-                    "name": name,
-                    "prize": prize,
-                    "password": password,
-                    "source": "freeroll-password.com"
-                })
-        except Exception as e:
-            continue
-
-    return events
 
 
 # ------------------------------------------------------
 # SCRAPER – freerollpass.com
 # ------------------------------------------------------
-def fetch_freerolls_pass():
+def fetch_freerolls_pass() -> List[TournamentEvent]:
     """Fetch freerolls from freerollpass.com"""
     try:
         parser = FreerollParser(url=URL_PASS)
         tournaments = parser.get_tournaments()
+        return tournaments if tournaments else []
     except:
         return []
-
-    events = []
-    for tournament in tournaments:
-        try:
-            # Parse date and time with timezone
-            date_str = tournament.get('date')  # e.g., "24.11.2025"
-            time_str = tournament.get('time')  # e.g., "21:00"
-            tz_offset = tournament.get('timezone_offset', 1)  # Get calculated offset, default to GMT+1
-            
-            if not date_str or not time_str:
-                continue
-
-            # Combine date and time (date_str already contains the year)
-            dt_str = f"{date_str} {time_str}"
-            try:
-                # Format: "24.11.2025 21:00"
-                dt_naive = datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
-            except:
-                try:
-                    # Try alternative format: "11/24/2025 21:00"
-                    dt_naive = datetime.strptime(dt_str, "%m/%d/%Y %H:%M")
-                except:
-                    continue
-
-            # Create timezone-aware datetime with calculated offset
-            source_tz = timezone(timedelta(hours=tz_offset))
-            dt_aware = dt_naive.replace(tzinfo=source_tz)
-            
-            # Convert to Budapest time (GMT+1)
-            budapest_tz = timezone(timedelta(hours=1))
-            dt_budapest = dt_aware.astimezone(budapest_tz)
-
-            # Get password
-            password = tournament.get('password', 'n/a')
-            if password is None:
-                password = "not required"
-
-            events.append({
-                "datetime": dt_budapest.replace(tzinfo=None),  # Store as naive datetime in Budapest time
-                "room": tournament.get('poker_room', 'Unknown'),
-                "name": tournament.get('tournament_name', 'Unknown'),
-                "prize": tournament.get('prize_pool', 'n/a'),
-                "password": password,
-                "source": "freerollpass.com"
-            })
-        except Exception as e:
-            continue
-
-    return events
 
 
 # ------------------------------------------------------
 # COMBINED SCRAPER
 # ------------------------------------------------------
-def fetch_freerolls():
+def get_event_datetime(event: TournamentEvent) -> datetime:
+    """Get datetime from event (date + time fields)"""
+    if event['is_all_day'] or event['time'] is None:
+        # For all-day events, use midnight
+        return datetime.combine(event['date'], datetime.min.time())
+    return datetime.combine(event['date'], event['time'])
+
+def fetch_freerolls() -> List[TournamentEvent]:
     """Fetch freerolls from all sources and combine them"""
-    events = []
-    
-    # Fetch from both sources
+    events: List[TournamentEvent] = []    # Fetch from both sources
     events.extend(fetch_freerolls_password())
     events.extend(fetch_freerolls_pass())
     
-    # Sort by datetime
-    events.sort(key=lambda x: x["datetime"])
+    # Sort by date and time
+    events.sort(key=lambda x: get_event_datetime(x))
     return events
 
 # ------------------------------------------------------
@@ -240,10 +123,12 @@ def load_last_event():
     except:
         return None
 
-def save_last_event(event):
+def save_last_event(event: TournamentEvent) -> None:
     """Save the last sent event to file"""
     event_data = {
-        "datetime": event["datetime"].isoformat(),
+        "date": event["date"].isoformat(),
+        "time": event["time"].isoformat() if event["time"] else None,
+        "is_all_day": event["is_all_day"],
         "room": event["room"],
         "name": event["name"],
         "prize": event["prize"],
@@ -256,14 +141,16 @@ def save_last_event(event):
     except Exception as e:
         print(f"Error saving event: {e}")
 
-def event_is_after_last(event):
+def event_is_after_last(event: TournamentEvent) -> bool:
     """Check if an event is after the last sent event"""
     last_event = load_last_event()
     if last_event is None:
         return True
     
     event_data = {
-        "datetime": event["datetime"].isoformat(),
+        "date": event["date"].isoformat(),
+        "time": event["time"].isoformat() if event["time"] else None,
+        "is_all_day": event["is_all_day"],
         "room": event["room"],
         "name": event["name"],
         "prize": event["prize"],
@@ -272,18 +159,34 @@ def event_is_after_last(event):
     }
     
     # Compare datetime to see if this event is newer
-    return event_data["datetime"] > last_event["datetime"] or event_data != last_event
+    event_dt = get_event_datetime(event)
+    last_dt_str = f"{last_event['date']} {last_event.get('time', '00:00:00')}"
+    try:
+        last_dt = datetime.fromisoformat(last_dt_str.replace(' ', 'T'))
+    except:
+        # If can't parse last event, consider current event as new
+        return True
+    
+    return event_dt > last_dt or event_data != last_event
 
 # ------------------------------------------------------
 # FORMATTER
 # ------------------------------------------------------
-def fmt(e):
+def fmt(e: TournamentEvent) -> str:
     source_emoji = "🌐" if e.get('source') == "freeroll-password.com" else "🎯"
+    
+    # Format time display
+    if e['is_all_day'] or e['time'] is None:
+        time_display = f"**{e['date'].strftime('%d.%m.%Y')} (egész nap)**"
+    else:
+        dt = get_event_datetime(e)
+        time_display = f"**{dt.strftime('%H:%M %d.%m.%Y')}**"
+    
     return (
         f"💰 **{e['name']}**\n"
         f"🏢 Terem: **{e['room']}**\n"
         f"💵 Díjazás: **{e['prize']}**\n"
-        f"🕒 Kezdés: **{e['datetime'].strftime('%H:%M %d.%m.%Y')}**\n"
+        f"🕒 Kezdés: {time_display}\n"
         f"🔑 Jelszó: **{e['password']}**\n"
         f"{source_emoji} Forrás: {e.get('source', 'n/a')}\n"
         f"──────────────"
@@ -300,7 +203,7 @@ async def send_today(message):
     
     # Következő 24 óra eseményei (most + 24 óra)
     next_24h_cutoff = now + timedelta(hours=24)
-    next_24h = [e for e in events if now <= e["datetime"] <= next_24h_cutoff]
+    next_24h = [e for e in events if now <= get_event_datetime(e) <= next_24h_cutoff]
 
     if not next_24h:
         await message.channel.send("📭 Nincs freeroll a következő 24 órában.")
@@ -315,14 +218,16 @@ async def send_next(message):
     global GLOBAL_EVENTS
     events = GLOBAL_EVENTS if GLOBAL_EVENTS else fetch_freerolls()
     now = datetime.now()
-    future = [e for e in events if e["datetime"] > now]
+    
+    # Filter out all-day events and get future events
+    future = [e for e in events if not e['is_all_day'] and get_event_datetime(e) > now]
 
     if not future:
         await message.channel.send("❌ Nincs közelgő freeroll.")
         return
 
     nxt = future[0]
-    delta = nxt["datetime"] - now
+    delta = get_event_datetime(nxt) - now
     total_minutes = int(delta.total_seconds() / 60)
     
     time_msg = f"⏰ **{total_minutes} perc múlva kezdődik!**\n\n"
@@ -377,12 +282,23 @@ async def status_rotator():
 SENT_ALERTS = set()
 
 # Globálisan tárolt események a watcher-ből
-GLOBAL_EVENTS = []
+GLOBAL_EVENTS: List[TournamentEvent] = []
 
 async def watcher():
     global SENT_ALERTS, GLOBAL_EVENTS
     await bot.wait_until_ready()
-    channel = bot.get_channel(CHANNEL_ID)
+    channel_obj = bot.get_channel(CHANNEL_ID)
+    
+    if channel_obj is None:
+        print(f"Error: Channel with ID {CHANNEL_ID} not found")
+        return
+    
+    # Type narrowing - ensure we have a text channel
+    if not isinstance(channel_obj, (discord.TextChannel, discord.Thread)):
+        print(f"Error: Channel {CHANNEL_ID} is not a text channel or thread")
+        return
+    
+    channel = cast(Union[discord.TextChannel, discord.Thread], channel_obj)
 
     last_daily_send = None
 
@@ -396,7 +312,7 @@ async def watcher():
         if last_daily_send is None or last_daily_send != today:
             # Következő 24 óra eseményei (most + 24 óra)
             next_24h_cutoff = now + timedelta(hours=24)
-            next_24h = [e for e in events if now <= e["datetime"] <= next_24h_cutoff]
+            next_24h = [e for e in events if now <= get_event_datetime(e) <= next_24h_cutoff]
             
             # Csak azokat küldjük el, amik az utolsó elküldött esemény után vannak
             unsent_events = [e for e in next_24h if event_is_after_last(e)]
@@ -411,30 +327,45 @@ async def watcher():
                 last_daily_send = today
 
         # Jövőbeli események figyelmeztetésekhez
-        future = [e for e in events if e["datetime"] > now]
-        role = discord.utils.get(channel.guild.roles, name="notif_poker")
+        # Filter out all-day events from alerts (1h and 10min warnings)
+        next_24h_cutoff = now + timedelta(hours=24)
+        next_24h_timed = [e for e in events if not e['is_all_day'] and now <= get_event_datetime(e) <= next_24h_cutoff]
+        
+        role = None
+        if isinstance(channel, discord.TextChannel) and channel.guild:
+            role = discord.utils.get(channel.guild.roles, name="notif_poker")
 
-        for nxt in future:
-            delta = nxt["datetime"] - now
+        for nxt in next_24h_timed:
+            delta = get_event_datetime(nxt) - now
             total_minutes = int(delta.total_seconds() / 60)
 
             # 1 órás figyelmeztetés (60 perc alatt van, de több mint 10 perc múlva kezdődik)
             if total_minutes < 60 and total_minutes > 10:
-                event_key = (nxt["datetime"], nxt["name"], '1hour')
+                event_key = (get_event_datetime(nxt), nxt["name"], '1hour')
                 if event_key not in SENT_ALERTS:
                     SENT_ALERTS.add(event_key)
-                    await channel.send(
-                        f"{role.mention} ⏰ **{total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
-                    )
+                    if role:
+                        await channel.send(
+                            f"{role.mention} ⏰ **{total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
+                        )
+                    else:
+                        await channel.send(
+                            f"⏰ **{total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
+                        )
 
             # 10 perces figyelmeztetés (10 perc alatt van, de még nem küldtük el)
             if total_minutes < 10 and total_minutes >= 0:
-                event_key = (nxt["datetime"], nxt["name"], '10min')
+                event_key = (get_event_datetime(nxt), nxt["name"], '10min')
                 if event_key not in SENT_ALERTS:
                     SENT_ALERTS.add(event_key)
-                    await channel.send(
-                        f"{role.mention} 🚨 **FIGYELEM! {total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
-                    )
+                    if role:
+                        await channel.send(
+                            f"{role.mention} 🚨 **FIGYELEM! {total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
+                        )
+                    else:
+                        await channel.send(
+                            f"🚨 **FIGYELEM! {total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
+                        )
 
         # Memória tisztítás: töröljük a lejárt eseményeket
         cutoff_time = now - timedelta(hours=2)
@@ -474,6 +405,7 @@ async def on_message(message):
 
     if msg == "!help":
         await send_help(message)
+
 
 
 bot.run(TOKEN)

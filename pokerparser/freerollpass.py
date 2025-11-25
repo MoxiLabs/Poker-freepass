@@ -1,10 +1,9 @@
-"""URL parser for freerollpass.com"""
-
-import re
-import requests
-from bs4 import BeautifulSoup
-from typing import List, Dict, Optional
+import datetime as dt
 from datetime import datetime, timezone, timedelta
+from bs4 import BeautifulSoup
+import requests
+from typing import List, Dict, Optional
+from .models import TournamentEvent
 
 
 class FreerollParser:
@@ -186,7 +185,58 @@ class FreerollParser:
         
         return None
     
-    def get_tournaments(self) -> List[Dict]:
+    def get_tournaments(self) -> List[TournamentEvent]:
         """Fetch and parse all tournaments"""
         html_content = self.fetch_page()
-        return self.parse_freerolls(html_content)
+        tournaments = self.parse_freerolls(html_content)
+        
+        events: List[TournamentEvent] = []
+        for tournament in tournaments:
+            try:
+                # Parse date and time with timezone
+                date_str = tournament.get('date')  # e.g., "24.11.2025"
+                time_str = tournament.get('time')  # e.g., "21:00"
+                tz_offset = tournament.get('timezone_offset', 1)  # Get calculated offset, default to GMT+1
+                
+                if not date_str or not time_str:
+                    continue
+
+                # Combine date and time (date_str already contains the year)
+                dt_str = f"{date_str} {time_str}"
+                try:
+                    # Format: "24.11.2025 21:00"
+                    dt_naive = datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
+                except:
+                    try:
+                        # Try alternative format: "11/24/2025 21:00"
+                        dt_naive = datetime.strptime(dt_str, "%m/%d/%Y %H:%M")
+                    except:
+                        continue
+
+                # Create timezone-aware datetime with calculated offset
+                source_tz = timezone(timedelta(hours=tz_offset))
+                dt_aware = dt_naive.replace(tzinfo=source_tz)
+                
+                # Convert to Budapest time (GMT+1)
+                budapest_tz = timezone(timedelta(hours=1))
+                dt_budapest = dt_aware.astimezone(budapest_tz)
+
+                # Get password
+                password = tournament.get('password', 'n/a')
+                if password is None:
+                    password = "not required"
+
+                events.append({
+                    "date": dt_budapest.date(),
+                    "time": dt_budapest.time(),
+                    "is_all_day": False,  # freerollpass.com always has specific times
+                    "room": tournament.get('poker_room', 'Unknown'),
+                    "name": tournament.get('tournament_name', 'Unknown'),
+                    "prize": tournament.get('prize_pool', 'n/a'),
+                    "password": password,
+                    "source": "freerollpass.com"
+                })
+            except Exception as e:
+                continue
+
+        return events
