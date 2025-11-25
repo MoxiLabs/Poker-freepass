@@ -113,61 +113,76 @@ def fetch_freerolls() -> List[TournamentEvent]:
 # ------------------------------------------------------
 # EVENT STORAGE HELPERS
 # ------------------------------------------------------
-def load_last_event():
-    """Load the last sent event from file"""
+def event_to_dict(event: TournamentEvent) -> dict:
+    """Convert TournamentEvent to dictionary for comparison/storage"""
+    return {
+        "date": event["date"].isoformat(),
+        "time": event["time"].isoformat() if event["time"] else None,
+        "is_all_day": event["is_all_day"],
+        "room": event["room"],
+        "name": event["name"],
+        "prize": event["prize"],
+        "password": event["password"],
+        "source": event.get("source", "n/a")
+    }
+
+def load_sent_events() -> List[dict]:
+    """Load all sent events from file"""
     if not os.path.exists(LAST_EVENT_FILE):
-        return None
+        return []
     try:
         with open(LAST_EVENT_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
+            # Handle old format (single event) and new format (list of events)
+            if isinstance(data, dict):
+                return [data]  # Convert old single event to list
+            return data if isinstance(data, list) else []
     except:
-        return None
+        return []
 
-def save_last_event(event: TournamentEvent) -> None:
-    """Save the last sent event to file"""
-    event_data = {
-        "date": event["date"].isoformat(),
-        "time": event["time"].isoformat() if event["time"] else None,
-        "is_all_day": event["is_all_day"],
-        "room": event["room"],
-        "name": event["name"],
-        "prize": event["prize"],
-        "password": event["password"],
-        "source": event.get("source", "n/a")
-    }
+def save_sent_events(events: List[dict]) -> None:
+    """Save all sent events to file"""
     try:
         with open(LAST_EVENT_FILE, 'w', encoding='utf-8') as f:
-            json.dump(event_data, f, ensure_ascii=False, indent=2)
+            json.dump(events, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Error saving event: {e}")
+        print(f"Error saving sent events: {e}")
 
-def event_is_after_last(event: TournamentEvent) -> bool:
-    """Check if an event is after the last sent event"""
-    last_event = load_last_event()
-    if last_event is None:
-        return True
+def event_already_sent(event: TournamentEvent, sent_events: List[dict]) -> bool:
+    """Check if event was already sent (deep compare all fields)"""
+    event_data = event_to_dict(event)
+    for sent_event in sent_events:
+        if event_data == sent_event:
+            return True
+    return False
+
+def add_sent_event(event: TournamentEvent) -> None:
+    """Add event to sent events list"""
+    sent_events = load_sent_events()
+    event_data = event_to_dict(event)
     
-    event_data = {
-        "date": event["date"].isoformat(),
-        "time": event["time"].isoformat() if event["time"] else None,
-        "is_all_day": event["is_all_day"],
-        "room": event["room"],
-        "name": event["name"],
-        "prize": event["prize"],
-        "password": event["password"],
-        "source": event.get("source", "n/a")
-    }
+    # Only add if not already in list
+    if not event_already_sent(event, sent_events):
+        sent_events.append(event_data)
+        save_sent_events(sent_events)
+
+def cleanup_old_events() -> None:
+    """Remove events older than today from sent events list"""
+    sent_events = load_sent_events()
+    today = datetime.now().date()
     
-    # Compare datetime to see if this event is newer
-    event_dt = get_event_datetime(event)
-    last_dt_str = f"{last_event['date']} {last_event.get('time', '00:00:00')}"
-    try:
-        last_dt = datetime.fromisoformat(last_dt_str.replace(' ', 'T'))
-    except:
-        # If can't parse last event, consider current event as new
-        return True
+    # Keep only today's events
+    cleaned_events = []
+    for event_data in sent_events:
+        try:
+            event_date = datetime.fromisoformat(event_data["date"]).date()
+            if event_date >= today:
+                cleaned_events.append(event_data)
+        except:
+            # If can't parse date, skip this event
+            continue
     
-    return event_dt > last_dt or event_data != last_event
+    save_sent_events(cleaned_events)
 
 # ------------------------------------------------------
 # FORMATTER
@@ -308,23 +323,37 @@ async def watcher():
         now = datetime.now()
         today = now.date()
 
-        # Napi összesítő küldése (egyszer naponta)
-        if last_daily_send is None or last_daily_send != today:
-            # Következő 24 óra eseményei (most + 24 óra)
-            next_24h_cutoff = now + timedelta(hours=24)
-            next_24h = [e for e in events if now <= get_event_datetime(e) <= next_24h_cutoff]
+        # Cleanup: töröljük a mainál régebbi eseményeket
+        cleanup_old_events()
+        
+        # Betöltjük az elküldött eseményeket
+        sent_events = load_sent_events()
+        
+        # Következő 24 óra eseményei (most + 24 óra)
+        next_24h_cutoff = now + timedelta(hours=24)
+        next_24h = [e for e in events if now <= get_event_datetime(e) <= next_24h_cutoff]
+        
+        # Csak azokat küldjük el, amik még nem voltak elküldve (deep compare)
+        new_events = [e for e in next_24h if not event_already_sent(e, sent_events)]
+        
+        if new_events:
+            # Ellenőrizzük, hogy ma már küldtünk-e napi összesítőt
+            # (van-e ma dátumú esemény az elküldöttek között)
+            has_sent_today = any(
+                datetime.fromisoformat(sent["date"]).date() == today 
+                for sent in sent_events
+            )
             
-            # Csak azokat küldjük el, amik az utolsó elküldött esemény után vannak
-            unsent_events = [e for e in next_24h if event_is_after_last(e)]
-            
-            if unsent_events:
+            # Ha már küldtünk ma napi összesítőt, akkor "Új napi esemény" címmel küldjük
+            if has_sent_today:
+                await channel.send("🆕 **Új napi esemény:**\n")
+            else:
                 await channel.send("📅 **Következő 24 óra freerolljai:**\n")
-                for e in unsent_events:
-                    await channel.send(fmt(e))
-                # Az utolsó eseményt mentjük el
-                if unsent_events:
-                    save_last_event(unsent_events[-1])
-                last_daily_send = today
+            
+            for e in new_events:
+                await channel.send(fmt(e))
+                # Hozzáadjuk az elküldött események listájához
+                add_sent_event(e)
 
         # Jövőbeli események figyelmeztetésekhez
         # Filter out all-day events from alerts (1h and 10min warnings)
