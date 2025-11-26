@@ -1,35 +1,35 @@
 # Poker Freeroll Bot
 
-Discord bot a poker freeroll tornák automatikus figyelésére és értesítésére.
+Discord bot for automatic monitoring and notifications of poker freeroll tournaments.
 
-## Leírás
+## Description
 
-Ez a bot automatikusan figyeli a poker freeroll tornákat két forrásból:
+This bot automatically monitors poker freeroll tournaments from two sources:
 - freeroll-password.com
 - freerollpass.com
 
-A bot Discord-on keresztül értesít a közelgő tornákról, és különböző parancsokkal lekérdezhetők az aktuális események.
+The bot sends notifications through Discord about upcoming tournaments, and you can query current events using various commands.
 
 ## Features
 
-- Automatikus freeroll figyelés és értesítések
-- Napi összesítő a következő 24 óráról
-- Értesítések 1 órával és 10 perccel a kezdés előtt
-- Discord parancsok a tornák lekérdezésére
-- Időzóna kezelés (Budapest idő)
-- Két különböző forrás aggregálása
+- Automatic freeroll monitoring and notifications
+- Daily summary for the next 24 hours
+- Notifications 1 hour and 10 minutes before start
+- Discord commands to query tournaments
+- Timezone handling (Budapest time)
+- Aggregation from two different sources
 
-## Telepítés fps.ms platformra
+## Installation on fps.ms platform
 
-### 1. Konfiguráció beállítása
+### 1. Configuration setup
 
-Hozz létre egy `config.json` fájlt a projekt gyökérkönyvtárában a `config.example.json` alapján:
+Create a `config.json` file in the project root directory based on `config.example.json`:
 
 ```bash
 cp config.example.json config.json
 ```
 
-Szerkeszd a `config.json` fájlt és add meg a saját Discord token-edet és channel ID-t:
+Edit the `config.json` file and provide your Discord token and channel ID:
 
 ```json
 {
@@ -38,75 +38,75 @@ Szerkeszd a `config.json` fájlt és add meg a saját Discord token-edet és cha
 }
 ```
 
-**Fontos:** A `config.json` fájl a `.gitignore`-ban van, így nem kerül fel verziókezelésre. Ezt a fájlt manuálisan kell feltöltened az fps.ms szerverre!
+**Important:** The `config.json` file is in `.gitignore`, so it won't be committed to version control. You must upload this file manually to the fps.ms server!
 
-### 2. Fájlok feltöltése fps.ms-re
+### 2. Upload files to fps.ms
 
-1. Jelentkezz be az [fps.ms panelre](https://panel.fps.ms/)
-2. Navigálj a Files (Fájlok) tabra
-3. Töltsd fel az összes fájlt, **beleértve a `config.json` fájlt is**
-4. Ellenőrizd, hogy a következő fájlok megtalálhatók:
-   - `app.py` (ez a futtatási pont az fps.ms-nek)
-   - `config.json` (az éles token-nel)
+1. Log in to the [fps.ms panel](https://panel.fps.ms/)
+2. Navigate to the Files tab
+3. Upload all files, **including the `config.json` file**
+4. Verify that the following files are present:
+   - `app.py` (this is the entry point for fps.ms)
+   - `config.json` (with the production token)
    - `requirements.txt`
-   - `pokerparser/` mappa az összes Python fájllal
+   - `pokerparser/` folder with all Python files
 
-### 3. Dependencies telepítése
+### 3. Installing dependencies
 
-Az fps.ms automatikusan telepíti a `requirements.txt`-ben megadott csomagokat.
+fps.ms automatically installs packages specified in `requirements.txt`.
 
-### 4. Bot indítása
+### 4. Starting the bot
 
-Az fps.ms automatikusan elindítja az `app.py` fájlt. Ha manuálisan szeretnéd indítani:
+fps.ms automatically starts the `app.py` file. If you want to start it manually:
 
 ```bash
 python app.py
 ```
 
-## Biztonsági megjegyzések
+## Security notes
 
-- **SOHA ne commitáld a `config.json` fájlt** a git repository-ba!
-- A `config.example.json` csak sablonként szolgál, ne írj bele éles adatokat
-- Az fps.ms-en a `config.json` fájlt az SFTP-n keresztül kell feltölteni
-- Ha meg szeretnéd változtatni a token-t, csak a `config.json` fájlt kell szerkeszteni az fps.ms Files tabján vagy SFTP-n keresztül
+- **NEVER commit the `config.json` file** to the git repository!
+- The `config.example.json` only serves as a template, don't put production data in it
+- On fps.ms, the `config.json` file must be uploaded via SFTP
+- If you want to change the token, you only need to edit the `config.json` file in the fps.ms Files tab or via SFTP
 
-## Lokális fejlesztés
+## Local development
 
-Lokális fejlesztéshez hozz létre egy `config.json` fájlt:
+For local development, create a `config.json` file:
 
 ```bash
 cp config.example.json config.json
 ```
 
-Majd add meg a tesztelési token-t és channel ID-t.
+Then provide the test token and channel ID.
 
-Futtatás lokálisan:
+Running locally:
 
 ```bash
 python -m pokerparser.discordbot
 ```
 
-Vagy egyszerűen:
+Or simply:
 
 ```bash
 python app.py
 ```
 
-## Discord parancsok
+## Discord commands
 
-- `!nap` - A következő 24 óra freerolljai
-- `!kovetkezo` - A legközelebbi freeroll részletei  
-- `!teszt` - Bot működésének ellenőrzése
-- `!help` - Súgó üzenet
+- `!day` - Freerolls for the next 24 hours
+- `!next` - Details of the nearest freeroll  
+- `!test` - Check bot operation
+- `!help` - Help message
 
-## Automatikus értesítések
+## Automatic notifications
 
-A bot automatikusan figyeli a freerollokat és értesít:
-- 📅 Napi összesítő a következő 24 óra eseményeiről
-- ⏰ 1 órával a kezdés előtt
-- 🚨 10 perccel a kezdés előtt
+The bot automatically monitors freerolls and sends notifications:
+- 📅 Daily summary of events for the next 24 hours
+- ⏰ 1 hour before start
+- 🚨 10 minutes before start
 
-Az értesítések a `@notif_poker` szerepkört említik.
+Notifications mention the `@notif_poker` role.
 
 ## Requirements
 

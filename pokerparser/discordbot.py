@@ -204,18 +204,18 @@ def fmt(e: TournamentEvent) -> str:
     
     # Format time display
     if e['is_all_day'] or e['time'] is None:
-        time_display = f"**{e['date'].strftime('%d.%m.%Y')} (egész nap)**"
+        time_display = f"**{e['date'].strftime('%d.%m.%Y')} (all day)**"
     else:
         dt = get_event_datetime(e)
         time_display = f"**{dt.strftime('%H:%M %d.%m.%Y')}**"
     
     return (
         f"💰 **{e['name']}**\n"
-        f"🏢 Terem: **{e['room']}**\n"
-        f"💵 Díjazás: **{e['prize']}**\n"
-        f"🕒 Kezdés: {time_display}\n"
-        f"🔑 Jelszó: **{e['password']}**\n"
-        f"{source_emoji} Forrás: {e.get('source', 'n/a')}\n"
+        f"🏢 Room: **{e['room']}**\n"
+        f"💵 Prize: **{e['prize']}**\n"
+        f"🕒 Start: {time_display}\n"
+        f"🔑 Password: **{e['password']}**\n"
+        f"{source_emoji} Source: {e.get('source', 'n/a')}\n"
         f"──────────────"
     )
 
@@ -223,25 +223,25 @@ def fmt(e: TournamentEvent) -> str:
 # COMMANDS
 # ------------------------------------------------------
 async def send_today(message):
-    # Használjuk a globálisan tárolt eseményeket a watcher-ből
+    # Use globally stored events from the watcher
     global GLOBAL_EVENTS
     events = GLOBAL_EVENTS if GLOBAL_EVENTS else fetch_freerolls()
     now = datetime.now()
     
-    # Következő 24 óra eseményei (most + 24 óra)
+    # Events in the next 24 hours (now + 24 hours)
     next_24h_cutoff = now + timedelta(hours=24)
     next_24h = [e for e in events if now <= get_event_datetime(e) <= next_24h_cutoff]
 
     if not next_24h:
-        await send_discord_message(message.channel, "📭 Nincs freeroll a következő 24 órában.")
+        await send_discord_message(message.channel, "📭 No freerolls in the next 24 hours.")
         return
 
-    await send_discord_message(message.channel, "📅 **Következő 24 óra freerolljai:**\n")
+    await send_discord_message(message.channel, "📅 **Freerolls for the next 24 hours:**\n")
     for e in next_24h:
         await send_discord_message(message.channel, fmt(e))
 
 async def send_next(message):
-    # Használjuk a globálisan tárolt eseményeket a watcher-ből
+    # Use globally stored events from the watcher
     global GLOBAL_EVENTS
     events = GLOBAL_EVENTS if GLOBAL_EVENTS else fetch_freerolls()
     now = datetime.now()
@@ -250,48 +250,48 @@ async def send_next(message):
     future = [e for e in events if not e['is_all_day'] and get_event_datetime(e) > now]
 
     if not future:
-        await send_discord_message(message.channel, "❌ Nincs közelgő freeroll.")
+        await send_discord_message(message.channel, "❌ No upcoming freeroll.")
         return
 
     nxt = future[0]
     delta = get_event_datetime(nxt) - now
     total_minutes = int(delta.total_seconds() / 60)
     
-    time_msg = f"⏰ **{total_minutes} perc múlva kezdődik!**\n\n"
-    await send_discord_message(message.channel, "👉 **Következő freeroll:**\n" + time_msg + fmt(nxt))
+    time_msg = f"⏰ **Starts in {total_minutes} minutes!**\n\n"
+    await send_discord_message(message.channel, "👉 **Next freeroll:**\n" + time_msg + fmt(nxt))
 
 
 async def send_debug(message):
     events = fetch_freerolls()
-    await send_discord_message(message.channel, f"🔧 Debug: {len(events)} freeroll olvasva.")
+    await send_discord_message(message.channel, f"🔧 Debug: {len(events)} freerolls loaded.")
 
 
 async def send_test(message):
-    await send_discord_message(message.channel, "🧪 Teszt OK! A bot fut.")
+    await send_discord_message(message.channel, "🧪 Test OK! The bot is running.")
 
 
 async def send_help(message):
     help_text = (
-        "🃏 **Freeroll Bot Parancsok:**\n\n"
-        "**!nap** - A következő 24 óra freerolljai\n"
-        "**!kovetkezo** - A legközelebbi freeroll részletei\n"
-        "**!teszt** - Bot működésének ellenőrzése\n"
-        "**!help** - Ez a súgó üzenet\n\n"
-        "A bot automatikusan figyeli a freerollokat és értesít:\n"
-        "⏰ 1 órával a kezdés előtt\n"
-        "🚨 10 perccel a kezdés előtt"
+        "🃏 **Freeroll Bot Commands:**\n\n"
+        "**!day** - Freerolls for the next 24 hours\n"
+        "**!next** - Details of the nearest freeroll\n"
+        "**!test** - Check bot operation\n"
+        "**!help** - This help message\n\n"
+        "The bot automatically monitors freerolls and sends notifications:\n"
+        "⏰ 1 hour before start\n"
+        "🚨 10 minutes before start"
     )
     await send_discord_message(message.channel, help_text)
 
 # ------------------------------------------------------
-# STATUS ROTATOR (presence ciklus)
+# STATUS ROTATOR (presence cycle)
 # ------------------------------------------------------
 STATUS_MESSAGES = cycle([
-    "👹 Figyelem a freerollokat…",
-    "🃏 Vadászat indul…",
-    "💰 Botzilla aktív módban",
-    "🧨 10 perces riasztások készen",
-    "♠️ Új freeroll közeleg…"
+    "👹 Monitoring freerolls…",
+    "🃏 Hunt is on…",
+    "💰 Botzilla in active mode",
+    "🧨 10-minute alerts ready",
+    "♠️ New freeroll approaching…"
 ])
 
 async def status_rotator():
@@ -302,13 +302,13 @@ async def status_rotator():
         await asyncio.sleep(20)
 
 # ------------------------------------------------------
-# WATCHER – Napi összesítő és figyelmeztetések
+# WATCHER – Daily summary and alerts
 # ------------------------------------------------------
-# Tároljuk az elküldött figyelmeztetéseket
-# Kulcs: (datetime, name, alert_type) ahol alert_type: 'daily', '1hour', '10min'
+# Store sent alerts
+# Key: (datetime, name, alert_type) where alert_type: 'daily', '1hour', '10min'
 SENT_ALERTS = set()
 
-# Globálisan tárolt események a watcher-ből
+# Globally stored events from the watcher
 GLOBAL_EVENTS: List[TournamentEvent] = []
 
 async def watcher():
@@ -331,43 +331,43 @@ async def watcher():
 
     while True:
         events = fetch_freerolls()
-        GLOBAL_EVENTS = events  # Tároljuk globálisan az eseményeket
+        GLOBAL_EVENTS = events  # Store events globally
         now = datetime.now()
         today = now.date()
 
-        # Cleanup: töröljük a mainál régebbi eseményeket
+        # Cleanup: remove events older than today
         cleanup_old_events()
         
-        # Betöltjük az elküldött eseményeket
+        # Load sent events
         sent_events = load_sent_events()
         
-        # Következő 24 óra eseményei (most + 24 óra)
+        # Events in the next 24 hours (now + 24 hours)
         next_24h_cutoff = now + timedelta(hours=24)
         next_24h = [e for e in events if now <= get_event_datetime(e) <= next_24h_cutoff]
         
-        # Csak azokat küldjük el, amik még nem voltak elküldve (deep compare)
+        # Only send events that haven't been sent yet (deep compare)
         new_events = [e for e in next_24h if not event_already_sent(e, sent_events)]
         
         if new_events:
-            # Ellenőrizzük, hogy ma már küldtünk-e napi összesítőt
-            # (van-e ma dátumú esemény az elküldöttek között)
+            # Check if we've already sent a daily summary today
+            # (is there an event with today's date in the sent list)
             has_sent_today = any(
                 datetime.fromisoformat(sent["date"]).date() == today 
                 for sent in sent_events
             )
             
-            # Ha már küldtünk ma napi összesítőt, akkor "Új napi esemény" címmel küldjük
+            # If we've already sent a daily summary today, send with "New daily event" title
             if has_sent_today:
-                await send_discord_message(channel, "🆕 **Új napi esemény:**\n")
+                await send_discord_message(channel, "🆕 **New daily event:**\n")
             else:
-                await send_discord_message(channel, "📅 **Következő 24 óra freerolljai:**\n")
+                await send_discord_message(channel, "📅 **Freerolls for the next 24 hours:**\n")
             
             for e in new_events:
                 await send_discord_message(channel, fmt(e))
-                # Hozzáadjuk az elküldött események listájához
+                # Add to the sent events list
                 add_sent_event(e)
 
-        # Jövőbeli események figyelmeztetésekhez
+        # Future events for alerts
         # Filter out all-day events from alerts (1h and 10min warnings)
         next_24h_cutoff = now + timedelta(hours=24)
         next_24h_timed = [e for e in events if not e['is_all_day'] and now <= get_event_datetime(e) <= next_24h_cutoff]
@@ -380,7 +380,7 @@ async def watcher():
             delta = get_event_datetime(nxt) - now
             total_minutes = int(delta.total_seconds() / 60)
 
-            # 1 órás figyelmeztetés (60 perc alatt van, de több mint 10 perc múlva kezdődik)
+            # 1 hour alert (less than 60 minutes but more than 10 minutes)
             if total_minutes < 60 and total_minutes > 10:
                 event_key = (get_event_datetime(nxt), nxt["name"], '1hour')
                 if event_key not in SENT_ALERTS:
@@ -388,15 +388,15 @@ async def watcher():
                     if role:
                         await send_discord_message(
                             channel,
-                            f"{role.mention} ⏰ **{total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
+                            f"{role.mention} ⏰ **Starts in {total_minutes} minutes!**\n\n" + fmt(nxt)
                         )
                     else:
                         await send_discord_message(
                             channel,
-                            f"⏰ **{total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
+                            f"⏰ **Starts in {total_minutes} minutes!**\n\n" + fmt(nxt)
                         )
 
-            # 10 perces figyelmeztetés (10 perc alatt van, de még nem küldtük el)
+            # 10 minute alert (less than 10 minutes and not yet sent)
             if total_minutes < 10 and total_minutes >= 0:
                 event_key = (get_event_datetime(nxt), nxt["name"], '10min')
                 if event_key not in SENT_ALERTS:
@@ -404,22 +404,22 @@ async def watcher():
                     if role:
                         await send_discord_message(
                             channel,
-                            f"{role.mention} 🚨 **FIGYELEM! {total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
+                            f"{role.mention} 🚨 **ATTENTION! Starts in {total_minutes} minutes!**\n\n" + fmt(nxt)
                         )
                     else:
                         await send_discord_message(
                             channel,
-                            f"🚨 **FIGYELEM! {total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
+                            f"🚨 **ATTENTION! Starts in {total_minutes} minutes!**\n\n" + fmt(nxt)
                         )
 
-        # Memória tisztítás: töröljük a lejárt eseményeket
+        # Memory cleanup: remove expired events
         cutoff_time = now - timedelta(hours=2)
         SENT_ALERTS = {
             (dt, name, alert_type) for (dt, name, alert_type) in SENT_ALERTS 
             if dt > cutoff_time
         }
 
-        await asyncio.sleep(300)  # Várakozás 5 percig
+        await asyncio.sleep(300)  # Wait 5 minutes
 
 # ------------------------------------------------------
 # BOT EVENTS
@@ -439,13 +439,13 @@ async def on_message(message):
 
     msg = message.content.lower()
 
-    if msg == "!nap":
+    if msg == "!day":
         await send_today(message)
 
-    if msg == "!kovetkezo":
+    if msg == "!next":
         await send_next(message)
 
-    if msg == "!teszt":
+    if msg == "!test":
         await send_test(message)
 
     if msg == "!help":
