@@ -1,4 +1,4 @@
-# Poker Freeroll Bot
+# Botzilla Poker Freeroll Bot
 
 Discord bot for automatic monitoring and notifications of poker freeroll tournaments.
 
