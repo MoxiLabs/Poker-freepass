@@ -65,6 +65,18 @@ URL_PASSWORD = "https://freeroll-password.com/"
 URL_PASS = "https://freerollpass.com/"
 
 # ------------------------------------------------------
+# DISCORD WRAPPER FOR DRY RUN
+# ------------------------------------------------------
+async def send_discord_message(target, content: str):
+    """Send message to Discord or print to console based on DRY_RUN env variable"""
+    dry_run = os.environ.get('DRY_RUN', '')
+    
+    if dry_run:  # Non-empty string means DRY_RUN mode
+        print(f"[DRY_RUN] Message to {target}: {content}")
+    else:
+        await target.send(content)
+
+# ------------------------------------------------------
 # SCRAPER – freeroll-password.com
 # ------------------------------------------------------
 def fetch_freerolls_password() -> List[TournamentEvent]:
@@ -221,12 +233,12 @@ async def send_today(message):
     next_24h = [e for e in events if now <= get_event_datetime(e) <= next_24h_cutoff]
 
     if not next_24h:
-        await message.channel.send("📭 Nincs freeroll a következő 24 órában.")
+        await send_discord_message(message.channel, "📭 Nincs freeroll a következő 24 órában.")
         return
 
-    await message.channel.send("📅 **Következő 24 óra freerolljai:**\n")
+    await send_discord_message(message.channel, "📅 **Következő 24 óra freerolljai:**\n")
     for e in next_24h:
-        await message.channel.send(fmt(e))
+        await send_discord_message(message.channel, fmt(e))
 
 async def send_next(message):
     # Használjuk a globálisan tárolt eseményeket a watcher-ből
@@ -238,7 +250,7 @@ async def send_next(message):
     future = [e for e in events if not e['is_all_day'] and get_event_datetime(e) > now]
 
     if not future:
-        await message.channel.send("❌ Nincs közelgő freeroll.")
+        await send_discord_message(message.channel, "❌ Nincs közelgő freeroll.")
         return
 
     nxt = future[0]
@@ -246,16 +258,16 @@ async def send_next(message):
     total_minutes = int(delta.total_seconds() / 60)
     
     time_msg = f"⏰ **{total_minutes} perc múlva kezdődik!**\n\n"
-    await message.channel.send("👉 **Következő freeroll:**\n" + time_msg + fmt(nxt))
+    await send_discord_message(message.channel, "👉 **Következő freeroll:**\n" + time_msg + fmt(nxt))
 
 
 async def send_debug(message):
     events = fetch_freerolls()
-    await message.channel.send(f"🔧 Debug: {len(events)} freeroll olvasva.")
+    await send_discord_message(message.channel, f"🔧 Debug: {len(events)} freeroll olvasva.")
 
 
 async def send_test(message):
-    await message.channel.send("🧪 Teszt OK! A bot fut.")
+    await send_discord_message(message.channel, "🧪 Teszt OK! A bot fut.")
 
 
 async def send_help(message):
@@ -269,7 +281,7 @@ async def send_help(message):
         "⏰ 1 órával a kezdés előtt\n"
         "🚨 10 perccel a kezdés előtt"
     )
-    await message.channel.send(help_text)
+    await send_discord_message(message.channel, help_text)
 
 # ------------------------------------------------------
 # STATUS ROTATOR (presence ciklus)
@@ -346,12 +358,12 @@ async def watcher():
             
             # Ha már küldtünk ma napi összesítőt, akkor "Új napi esemény" címmel küldjük
             if has_sent_today:
-                await channel.send("🆕 **Új napi esemény:**\n")
+                await send_discord_message(channel, "🆕 **Új napi esemény:**\n")
             else:
-                await channel.send("📅 **Következő 24 óra freerolljai:**\n")
+                await send_discord_message(channel, "📅 **Következő 24 óra freerolljai:**\n")
             
             for e in new_events:
-                await channel.send(fmt(e))
+                await send_discord_message(channel, fmt(e))
                 # Hozzáadjuk az elküldött események listájához
                 add_sent_event(e)
 
@@ -374,11 +386,13 @@ async def watcher():
                 if event_key not in SENT_ALERTS:
                     SENT_ALERTS.add(event_key)
                     if role:
-                        await channel.send(
+                        await send_discord_message(
+                            channel,
                             f"{role.mention} ⏰ **{total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
                         )
                     else:
-                        await channel.send(
+                        await send_discord_message(
+                            channel,
                             f"⏰ **{total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
                         )
 
@@ -388,11 +402,13 @@ async def watcher():
                 if event_key not in SENT_ALERTS:
                     SENT_ALERTS.add(event_key)
                     if role:
-                        await channel.send(
+                        await send_discord_message(
+                            channel,
                             f"{role.mention} 🚨 **FIGYELEM! {total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
                         )
                     else:
-                        await channel.send(
+                        await send_discord_message(
+                            channel,
                             f"🚨 **FIGYELEM! {total_minutes} perc múlva indul!**\n\n" + fmt(nxt)
                         )
 
