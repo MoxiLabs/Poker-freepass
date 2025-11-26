@@ -61,4 +61,4 @@ Thumbs.db
 *.log
 config.json
 
-sent_daily_events.json
+/last_event.json
